@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>中国語学習アプリ</title>
+  <style>
+    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header-controls { background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+    select { padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; flex-grow: 1; }
+    .sentence-box { background-color: #f0f7ff; border: 2px solid #4a90d9; border-radius: 10px; padding: 20px; margin: 20px 0; text-align: center; }
+    .pinyin-text { color: #e67e22; font-size: 18px; margin-bottom: 5px; font-family: Arial, sans-serif; }
+    .chinese-text { font-size: 28px; font-weight: bold; color: #333; margin: 10px 0; }
+    .hint-text { color: #666; font-size: 14px; margin-top: 10px; }
+    textarea { width: 100%; height: 100px; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+    button { background-color: #4a90d9; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; margin: 10px 5px 10px 0; }
+    button:hover { background-color: #3570b0; }
+    .speak-btn { background-color: #ff9800; }
+    .speak-btn:hover { background-color: #e68900; }
+    .mic-btn { background-color: #e74c3c; }
+    .mic-btn:hover { background-color: #c0392b; }
+    .recording { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { background-color: #e74c3c; } 50% { background-color: #ff7675; } 100% { background-color: #e74c3c; } }
+    .feedback { background-color: #e8f5e9; border-radius: 5px; padding: 15px; margin-top: 20px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <h1>🇨🇳 中国語学習アプリ</h1>
+  
+  <div class="header-controls">
+    <label for="sheetSelect">📂 シート選択:</label>
+    <select id="sheetSelect" onchange="loadNewQuestion()">
+      <option value="">読み込み中...</option>
+    </select>
+  </div>
+  
+  <div class="sentence-box">
+    <div class="pinyin-text" id="pinyinText"></div>
+    <div class="chinese-text" id="questionChinese">読み込み中...</div>
+    <div class="hint-text" id="hintText"></div>
+  </div>
+  
+  <div>
+    <button class="speak-btn" onclick="speakChinese()">🔊 音声を聞く</button>
+    <button onclick="loadNewQuestion()">🔄 次の問題</button>
+  </div>
+  
+  <div style="margin-top: 20px;">
+    <label>あなたの回答（中国語で入力してください）:</label>
+    <textarea id="userAnswer" placeholder="ここに中国語で回答を入力..."></textarea>
+  </div>
+  
+  <div>
+    <button class="mic-btn" id="micBtn" onclick="startSpeechRecognition()">🎤 音声で入力</button>
+    <button onclick="submitAnswer()">✓ 回答をチェック</button>
+  </div>
+  
+  <div id="feedbackArea" class="feedback" style="display:none;">
+    <strong>📝 AIからのアドバイス:</strong>
+    <div id="feedbackContent" style="margin-top: 10px;"></div>
+  </div>
+  
+  <script>
+    // ★★★ ここにGASのデプロイURLを貼り付けてください ★★★
+    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx0dRE-VJNuEyZtEKwJlCPEDhO_H2UrqINaHWJI1OIR_-97Rq_qMMxZ_vPFsW-gFho09A/exec';
+    
+    let currentQuestion = null;
+
+    // GASと通信するための共通関数
+    async function fetchFromGAS(payload) {
+      try {
+        const response = await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          // CORSエラーを避けるため text/plain で送信します
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+        return data;
+      } catch (error) {
+        console.error('Error:', error);
+        alert('通信エラーが発生しました: ' + error.message);
+        return null;
+      }
+    }
+    
+    window.onload = async function() {
+      const data = await fetchFromGAS({ action: 'getSheets' });
+      if (data && data.sheets) {
+        const select = document.getElementById('sheetSelect');
+        select.innerHTML = '';
+        data.sheets.forEach(function(sheet) {
+          const option = document.createElement('option');
+          option.value = sheet;
+          option.textContent = sheet;
+          select.appendChild(option);
+        });
+        if(data.sheets.length > 0) {
+          loadNewQuestion();
+        } else {
+          select.innerHTML = '<option>シートがありません</option>';
+        }
+      }
+    };
+    
+    async function loadNewQuestion() {
+      const sheetName = document.getElementById('sheetSelect').value;
+      if (!sheetName) return;
+      
+      const currentChinese = currentQuestion ? currentQuestion.chinese : null;
+      
+      document.getElementById('questionChinese').textContent = '読み込み中...';
+      document.getElementById('pinyinText').textContent = '';
+      document.getElementById('hintText').textContent = '';
+      document.getElementById('userAnswer').value = '';
+      document.getElementById('feedbackArea').style.display = 'none';
+      
+      const data = await fetchFromGAS({ 
+        action: 'getLessonData', 
+        sheetName: sheetName, 
+        currentChinese: currentChinese 
+      });
+
+      if (data && data.data) {
+        currentQuestion = data.data;
+        document.getElementById('questionChinese').textContent = currentQuestion.chinese;
+        document.getElementById('pinyinText').textContent = currentQuestion.pinyin ? currentQuestion.pinyin : '';
+        document.getElementById('hintText').textContent = currentQuestion.hint ? '💡 ヒント: ' + currentQuestion.hint : '';
+      } else {
+        document.getElementById('questionChinese').textContent = 'このシートにはデータがありません';
+      }
+    }
+    
+    function speakChinese() {
+      if (currentQuestion && currentQuestion.chinese) {
+        const utterance = new SpeechSynthesisUtterance(currentQuestion.chinese);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.8;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+    
+    function startSpeechRecognition() {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert('お使いのブラウザは音声入力に対応していません。Google Chromeをご利用ください。');
+        return;
+      }
+      
+      const recognition = new webkitSpeechRecognition();
+      recognition.lang = 'zh-CN';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      
+      const micBtn = document.getElementById('micBtn');
+      micBtn.classList.add('recording');
+      micBtn.textContent = '🔴 録音中...（話してください）';
+      
+      recognition.onresult = function(event) {
+        const result = event.results[0][0].transcript;
+        document.getElementById('userAnswer').value = result;
+      };
+      
+      recognition.onerror = function(event) {
+        alert('音声認識エラー: ' + event.error);
+      };
+      
+      recognition.onend = function() {
+        micBtn.classList.remove('recording');
+        micBtn.textContent = '🎤 音声で入力';
+      };
+      
+      recognition.start();
+    }
+    
+    async function submitAnswer() {
+      const userAnswer = document.getElementById('userAnswer').value;
+      const sheetName = document.getElementById('sheetSelect').value;
+      
+      if (!userAnswer.trim()) {
+        alert('回答を入力してください。');
+        return;
+      }
+      if (!currentQuestion) return;
+      
+      document.getElementById('feedbackContent').textContent = 'AIが評価中...（数秒かかります）';
+      document.getElementById('feedbackArea').style.display = 'block';
+      
+      const data = await fetchFromGAS({
+        action: 'evaluateAnswer',
+        questionChinese: currentQuestion.chinese,
+        userAnswer: userAnswer,
+        sheetName: sheetName
+      });
+
+      if (data && data.feedback) {
+        document.getElementById('feedbackContent').innerHTML = data.feedback.replace(/\n/g, '<br>');
+      } else {
+        document.getElementById('feedbackContent').textContent = '評価の取得に失敗しました。';
+      }
+    }
+  </script>
+</body>
+</html>
