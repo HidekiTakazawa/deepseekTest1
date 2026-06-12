@@ -5,23 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>中国語学習アプリ</title>
   <style>
-    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333; }
     .header-controls { background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
     select { padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; flex-grow: 1; }
     .sentence-box { background-color: #f0f7ff; border: 2px solid #4a90d9; border-radius: 10px; padding: 20px; margin: 20px 0; text-align: center; }
     .pinyin-text { color: #e67e22; font-size: 18px; margin-bottom: 5px; font-family: Arial, sans-serif; }
-    .chinese-text { font-size: 28px; font-weight: bold; color: #333; margin: 10px 0; }
+    .chinese-text { font-size: 28px; font-weight: bold; margin: 10px 0; }
     .hint-text { color: #666; font-size: 14px; margin-top: 10px; }
-    textarea { width: 100%; height: 100px; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+    textarea { width: 100%; height: 100px; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; resize: vertical; }
     button { background-color: #4a90d9; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; margin: 10px 5px 10px 0; }
     button:hover { background-color: #3570b0; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
     .speak-btn { background-color: #ff9800; }
     .speak-btn:hover { background-color: #e68900; }
     .mic-btn { background-color: #e74c3c; }
     .mic-btn:hover { background-color: #c0392b; }
+    .copy-btn { background-color: #27ae60; width: 100%; margin-top: 15px; font-weight: bold; }
+    .copy-btn:hover { background-color: #219653; }
     .recording { animation: pulse 1.5s infinite; }
     @keyframes pulse { 0% { background-color: #e74c3c; } 50% { background-color: #ff7675; } 100% { background-color: #e74c3c; } }
     .feedback { background-color: #e8f5e9; border-radius: 5px; padding: 15px; margin-top: 20px; line-height: 1.6; }
+    .progress-text { font-size: 14px; color: #666; text-align: right; margin-bottom: -10px; font-weight: bold; }
+    
+    /* 履歴画面用のスタイル */
+    #historyContent { background: #fff; padding: 15px; border: 1px solid #ccc; border-radius: 5px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+    .history-item { border-bottom: 1px dashed #ccc; padding-bottom: 15px; margin-bottom: 15px; }
+    .history-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
   </style>
 </head>
 <body>
@@ -29,49 +38,64 @@
   
   <div class="header-controls">
     <label for="sheetSelect">📂 シート選択:</label>
-    <select id="sheetSelect" onchange="loadNewQuestion()">
+    <select id="sheetSelect" onchange="loadSheetData()">
       <option value="">読み込み中...</option>
     </select>
   </div>
   
-  <div class="sentence-box">
-    <div class="pinyin-text" id="pinyinText"></div>
-    <div class="chinese-text" id="questionChinese">読み込み中...</div>
-    <div class="hint-text" id="hintText"></div>
+  <!-- 学習エリア -->
+  <div id="learningArea">
+    <div class="progress-text" id="progressText"></div>
+
+    <div class="sentence-box">
+      <div class="pinyin-text" id="pinyinText"></div>
+      <div class="chinese-text" id="questionChinese">読み込み中...</div>
+      <div class="hint-text" id="hintText"></div>
+    </div>
+    
+    <div>
+      <button class="speak-btn" onclick="speakChinese()">🔊 音声を聞く</button>
+      <button onclick="nextQuestion()">🔄 次の問題</button>
+    </div>
+    
+    <div style="margin-top: 20px;">
+      <label>あなたの回答（中国語で入力してください）:</label>
+      <textarea id="userAnswer" placeholder="ここに中国語で回答を入力...&#10;※Enterキーで送信（Shift+Enterで改行）"></textarea>
+    </div>
+    
+    <div>
+      <button class="mic-btn" id="micBtn" onclick="startSpeechRecognition()">🎤 音声で入力</button>
+      <button id="submitBtn" onclick="submitAnswer()">✓ 回答をチェック</button>
+    </div>
+    
+    <div id="feedbackArea" class="feedback" style="display:none;">
+      <strong>📝 AIからのアドバイス:</strong>
+      <div id="feedbackContent" style="margin-top: 10px;"></div>
+    </div>
   </div>
-  
-  <div>
-    <button class="speak-btn" onclick="speakChinese()">🔊 音声を聞く</button>
-    <button onclick="loadNewQuestion()">🔄 次の問題</button>
-  </div>
-  
-  <div style="margin-top: 20px;">
-    <label>あなたの回答（中国語で入力してください）:</label>
-    <textarea id="userAnswer" placeholder="ここに中国語で回答を入力..."></textarea>
-  </div>
-  
-  <div>
-    <button class="mic-btn" id="micBtn" onclick="startSpeechRecognition()">🎤 音声で入力</button>
-    <button onclick="submitAnswer()">✓ 回答をチェック</button>
-  </div>
-  
-  <div id="feedbackArea" class="feedback" style="display:none;">
-    <strong>📝 AIからのアドバイス:</strong>
-    <div id="feedbackContent" style="margin-top: 10px;"></div>
+
+  <!-- 履歴（結果）エリア -->
+  <div id="historyArea" style="display:none;">
+    <h2>📊 学習完了！今回の履歴</h2>
+    <div id="historyContent"></div>
+    <button class="copy-btn" onclick="copyHistory()">📋 履歴をクリップボードにコピー</button>
+    <button onclick="loadSheetData()" style="width: 100%; margin-top: 10px;">🔄 もう一度このシートを学習する</button>
   </div>
   
   <script>
     // ★★★ ここにGASのデプロイURLを貼り付けてください ★★★
     const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx0dRE-VJNuEyZtEKwJlCPEDhO_H2UrqINaHWJI1OIR_-97Rq_qMMxZ_vPFsW-gFho09A/exec';
     
+    let currentSheetData = []; 
+    let currentIndex = 0;      
     let currentQuestion = null;
+    let sessionHistory = []; // ★今回の学習履歴を保存する配列
+    let isEvaluating = false; // 連打防止フラグ
 
-    // GASと通信するための共通関数
     async function fetchFromGAS(payload) {
       try {
         const response = await fetch(GAS_WEB_APP_URL, {
           method: 'POST',
-          // CORSエラーを避けるため text/plain で送信します
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(payload)
         });
@@ -97,39 +121,121 @@
           select.appendChild(option);
         });
         if(data.sheets.length > 0) {
-          loadNewQuestion();
+          await loadSheetData();
         } else {
           select.innerHTML = '<option>シートがありません</option>';
         }
       }
+      
+      // ★Enterキーで送信するイベントリスナーを追加
+      document.getElementById('userAnswer').addEventListener('keydown', function(e) {
+        // Enterキーが押され、かつShiftキーが押されていない場合
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault(); // デフォルトの改行を防ぐ
+          if (!isEvaluating) submitAnswer();
+        }
+      });
     };
     
-    async function loadNewQuestion() {
+    async function loadSheetData() {
       const sheetName = document.getElementById('sheetSelect').value;
       if (!sheetName) return;
       
-      const currentChinese = currentQuestion ? currentQuestion.chinese : null;
-      
-      document.getElementById('questionChinese').textContent = '読み込み中...';
+      // 画面の初期化
+      document.getElementById('learningArea').style.display = 'block';
+      document.getElementById('historyArea').style.display = 'none';
+      document.getElementById('questionChinese').textContent = 'データ読み込み中...';
       document.getElementById('pinyinText').textContent = '';
       document.getElementById('hintText').textContent = '';
       document.getElementById('userAnswer').value = '';
       document.getElementById('feedbackArea').style.display = 'none';
+      document.getElementById('progressText').textContent = '';
       
-      const data = await fetchFromGAS({ 
-        action: 'getLessonData', 
-        sheetName: sheetName, 
-        currentChinese: currentChinese 
-      });
+      sessionHistory = []; // 履歴をリセット
+      
+      const data = await fetchFromGAS({ action: 'getSheetData', sheetName: sheetName });
 
-      if (data && data.data) {
-        currentQuestion = data.data;
-        document.getElementById('questionChinese').textContent = currentQuestion.chinese;
-        document.getElementById('pinyinText').textContent = currentQuestion.pinyin ? currentQuestion.pinyin : '';
-        document.getElementById('hintText').textContent = currentQuestion.hint ? '💡 ヒント: ' + currentQuestion.hint : '';
+      if (data && data.data && data.data.length > 0) {
+        currentSheetData = data.data;
+        currentIndex = 0;
+        showCurrentQuestion();
       } else {
+        currentSheetData = [];
         document.getElementById('questionChinese').textContent = 'このシートにはデータがありません';
       }
+    }
+
+    function showCurrentQuestion() {
+      if (currentSheetData.length === 0) return;
+      
+      currentQuestion = currentSheetData[currentIndex];
+      document.getElementById('progressText').textContent = `${currentIndex + 1} / ${currentSheetData.length} 問目`;
+      document.getElementById('questionChinese').textContent = currentQuestion.chinese;
+      document.getElementById('pinyinText').textContent = currentQuestion.pinyin ? currentQuestion.pinyin : '';
+      document.getElementById('hintText').textContent = currentQuestion.hint ? '💡 ヒント: ' + currentQuestion.hint : '';
+      document.getElementById('userAnswer').value = '';
+      document.getElementById('feedbackArea').style.display = 'none';
+      
+      // ★問題表示と同時に音声を自動再生
+      speakChinese();
+    }
+
+    function nextQuestion() {
+      if (currentSheetData.length === 0) return;
+      
+      currentIndex++;
+      
+      // ★最後の問題まで終わったら履歴画面を表示
+      if (currentIndex >= currentSheetData.length) {
+        showHistoryScreen();
+      } else {
+        showCurrentQuestion();
+      }
+    }
+    
+    // ★履歴画面を表示する関数
+    function showHistoryScreen() {
+      document.getElementById('learningArea').style.display = 'none';
+      document.getElementById('historyArea').style.display = 'block';
+      
+      const contentDiv = document.getElementById('historyContent');
+      contentDiv.innerHTML = '';
+      
+      if (sessionHistory.length === 0) {
+        contentDiv.innerHTML = '回答履歴がありません。';
+        return;
+      }
+      
+      sessionHistory.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `
+          <strong>Q${index + 1}: ${item.question}</strong><br>
+          <span style="color: #2980b9;">あなたの回答: ${item.answer}</span><br>
+          <div style="margin-top: 5px; color: #555;">${item.feedback.replace(/\n/g, '<br>')}</div>
+        `;
+        contentDiv.appendChild(div);
+      });
+    }
+    
+    // ★履歴をクリップボードにコピーする関数
+    function copyHistory() {
+      const sheetName = document.getElementById('sheetSelect').value;
+      const dateStr = new Date().toLocaleString('ja-JP');
+      let text = `【中国語学習履歴】\nシート名: ${sheetName}\n実施日時: ${dateStr}\n\n`;
+      
+      sessionHistory.forEach((item, index) => {
+        text += `■ Q${index + 1}: ${item.question}\n`;
+        text += `[回答] ${item.answer}\n`;
+        text += `[AI評価]\n${item.feedback}\n`;
+        text += `----------------------------------------\n\n`;
+      });
+      
+      navigator.clipboard.writeText(text).then(() => {
+        alert('📋 学習履歴をクリップボードにコピーしました！\n先生への提出用などにペーストしてご活用ください。');
+      }).catch(err => {
+        alert('コピーに失敗しました: ' + err);
+      });
     }
     
     function speakChinese() {
@@ -175,7 +281,6 @@
     
     async function submitAnswer() {
       const userAnswer = document.getElementById('userAnswer').value;
-      const sheetName = document.getElementById('sheetSelect').value;
       
       if (!userAnswer.trim()) {
         alert('回答を入力してください。');
@@ -183,21 +288,34 @@
       }
       if (!currentQuestion) return;
       
+      isEvaluating = true;
+      document.getElementById('submitBtn').disabled = true;
+      document.getElementById('submitBtn').textContent = '⏳ 評価中...';
       document.getElementById('feedbackContent').textContent = 'AIが評価中...（数秒かかります）';
       document.getElementById('feedbackArea').style.display = 'block';
       
       const data = await fetchFromGAS({
         action: 'evaluateAnswer',
         questionChinese: currentQuestion.chinese,
-        userAnswer: userAnswer,
-        sheetName: sheetName
+        userAnswer: userAnswer
       });
 
       if (data && data.feedback) {
         document.getElementById('feedbackContent').innerHTML = data.feedback.replace(/\n/g, '<br>');
+        
+        // ★履歴配列に今回のやり取りを保存
+        sessionHistory.push({
+          question: currentQuestion.chinese,
+          answer: userAnswer,
+          feedback: data.feedback
+        });
       } else {
         document.getElementById('feedbackContent').textContent = '評価の取得に失敗しました。';
       }
+      
+      isEvaluating = false;
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').textContent = '✓ 回答をチェック';
     }
   </script>
 </body>
